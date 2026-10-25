@@ -51,3 +51,5 @@ Variáveis esperadas (somente nomes): `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_S
 ## Limites técnicos atuais
 
 O histórico e a retenção continuam no armazenamento local do navegador por enquanto. Google Drive, persistência compartilhada de criações e exportação server-side ainda dependem de infraestrutura adicional. A autenticação só funciona após as variáveis do Supabase compartilhado estarem configuradas neste ambiente; até isso ocorrer, a tela informa a configuração ausente e não simula uma sessão.
+
+O módulo Brandbooks possui uma fundação de dados aplicada no Supabase central da Prime. Consulte [Módulo de Identidade Visual](../modulo_identidade_visual.md). Não replique a estrutura em um projeto Supabase paralelo nem exponha o bucket de ativos publicamente.

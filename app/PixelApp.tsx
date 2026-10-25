@@ -1,9 +1,9 @@
 "use client";
 /* eslint-disable @next/next/no-img-element, jsx-a11y/label-has-associated-control, react-hooks/static-components -- Official SVG assets must remain direct files; this is a stateful product shell with local view fragments. */
 
-import { ChangeEvent, ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { ChangeEvent, ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTheme } from "next-themes";
-import { ArrowLeft, ArrowRight, Check, ChevronDown, CircleHelp, Copy, Download, Grid2X2, House, Image, Layers3, LayoutPanelTop, Menu, Moon, Palette, Pencil, Plus, Settings2, Sparkles, Sun, Trash2, X, type LucideIcon } from "lucide-react";
+import { ArrowLeft, ArrowRight, BookOpen, Check, ChevronDown, CircleHelp, Copy, Download, Grid2X2, House, Image, Layers3, LayoutPanelTop, Menu, Moon, Palette, Pencil, Plus, Settings2, Sparkles, Sun, Trash2, X, type LucideIcon } from "lucide-react";
 import { logoutAction } from "@/app/actions/auth";
 import type { ActiveAuthMember } from "@/lib/auth/types";
 import { BrandProfile, Content, Creation, editorialCoverVariants, emptyContent, formats, FormatId, seedBrands, templatePreviewCreation, templates } from "./pixel-data";
@@ -12,8 +12,9 @@ import { downloadCard, downloadCardsZip, ExportFormat, renderCardBlob, renderCar
 import { composePages, inspectRenderedCard, validateContent } from "./pixel-engine";
 import { prepareImageForCard } from "./image-processing";
 import { loadCreations, saveCreations } from "./creation-storage";
+import { Brandbooks } from "./Brandbooks";
 
-type Screen = "home" | "creations" | "templates" | "brands" | "settings" | "generate" | "result";
+type Screen = "home" | "creations" | "templates" | "brands" | "brandbooks" | "settings" | "generate" | "result";
 type Retention = "15" | "30" | "90" | "custom";
 type Notice = { tone: "success" | "error" | "info"; text: string } | null;
 type GoogleDriveState = { loading: boolean; configured: boolean; connected: boolean };
@@ -21,7 +22,7 @@ type DriveUploadState = { phase: string; percent: number } | null;
 
 const STORAGE_KEY = "pixel-workspace-v1";
 
-const icons: Record<string, LucideIcon> = { home: House, grid: Grid2X2, layers: Layers3, mark: Palette, gear: Settings2, plus: Plus, arrow: ArrowRight, back: ArrowLeft, sun: Sun, moon: Moon, download: Download, spark: Sparkles, trash: Trash2, edit: Pencil, copy: Copy, check: Check, image: Image, close: X, chevron: ChevronDown, menu: Menu, help: CircleHelp, panel: LayoutPanelTop };
+const icons: Record<string, LucideIcon> = { home: House, grid: Grid2X2, layers: Layers3, mark: Palette, book: BookOpen, gear: Settings2, plus: Plus, arrow: ArrowRight, back: ArrowLeft, sun: Sun, moon: Moon, download: Download, spark: Sparkles, trash: Trash2, edit: Pencil, copy: Copy, check: Check, image: Image, close: X, chevron: ChevronDown, menu: Menu, help: CircleHelp, panel: LayoutPanelTop };
 const Icon = ({ name, size = 18 }: { name: string; size?: number }) => {
   const Component = icons[name] ?? CircleHelp;
   return <Component className="icon" size={size} strokeWidth={1.75} aria-hidden="true" />;
@@ -84,6 +85,7 @@ export function PixelApp({ member }: { member: ActiveAuthMember }) {
   const [driveUpload, setDriveUpload] = useState<DriveUploadState>(null);
   const [disconnectingDrive, setDisconnectingDrive] = useState(false);
   const exportNodes = useRef<(HTMLElement | null)[]>([]);
+  const showNotice = useCallback((next: Exclude<Notice, null>) => setNotice(next), []);
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => setThemeReady(true));
@@ -315,7 +317,7 @@ export function PixelApp({ member }: { member: ActiveAuthMember }) {
   const brandFromForm = (event: React.FormEvent<HTMLFormElement>) => { event.preventDefault(); const values = new FormData(event.currentTarget); const name = String(values.get("name") || "Nova marca"); const brand: BrandProfile = { id: crypto.randomUUID(), name, initials: name.split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase(), colors: [String(values.get("primary") || "#F04B3E"), String(values.get("secondary") || "#A9DCE8")], fonts: String(values.get("fonts") || "Geist"), slogan: String(values.get("slogan") || ""), voice: String(values.get("voice") || ""), guidelines: String(values.get("guidelines") || ""), assets: "Aguardando upload de assets" }; setBrands((items) => [brand, ...items]); setNotice({ tone: "success", text: "Marca cadastrada e pronta para ser usada na geração." }); event.currentTarget.reset(); };
 
   const navItems: { id: Exclude<Screen, "generate" | "result">; label: string; icon: string }[] = [
-    { id: "home", label: "Início", icon: "home" }, { id: "creations", label: "Criações", icon: "grid" }, { id: "templates", label: "Templates", icon: "layers" }, { id: "brands", label: "Marcas", icon: "mark" }, { id: "settings", label: "Configurações", icon: "gear" },
+    { id: "home", label: "Início", icon: "home" }, { id: "creations", label: "Criações", icon: "grid" }, { id: "templates", label: "Templates", icon: "layers" }, { id: "brands", label: "Marcas", icon: "mark" }, { id: "brandbooks", label: "Brandbooks", icon: "book" }, { id: "settings", label: "Configurações", icon: "gear" },
   ];
 
   const Shell = ({ children }: { children: ReactNode }) => <main className="app-shell">
@@ -385,6 +387,6 @@ export function PixelApp({ member }: { member: ActiveAuthMember }) {
   const VariationModal = () => (variationOpen && activeCreation) ? <div className="modal-backdrop"><section className="modal compact-modal"><button className="modal-close" aria-label="Fechar" onClick={() => setVariationOpen(false)}><Icon name="close"/></button><p className="eyebrow">Gerar variação</p><h2>O que você quer explorar?</h2><div className="variation-options">{[["layout", "Variar layout", "Outra estrutura visual compatível."], ["text", "Variar texto", "Uma nova leitura da mesma ideia."], ["image", "Variar imagem", "Preparado para assets conectados."], ["all", "Variar tudo", "Outra direção com base na criação."]].map(([value, label, description]) => <button className={variation === value ? "selected" : ""} key={value} onClick={() => setVariation(value)}><strong>{label}</strong><small>{description}</small><span className="selection-check"><Icon name="check" size={15}/></span></button>)}</div><label className="brief-label">Orientação opcional<textarea placeholder="Ex.: mais sóbrio, mais direto, mais editorial."/></label><div className="modal-actions"><button className="button ghost" onClick={() => setVariationOpen(false)}>Cancelar</button><button className="button vermilion" onClick={() => duplicate(activeCreation, true)}><Icon name="spark"/> Gerar variação</button></div></section></div> : null;
   const DeleteModal = () => confirmDelete ? <div className="modal-backdrop"><section className="modal confirm-modal"><img src={`/brand/pixel/symbol/symbol-${theme === "dark" ? "light" : "ink"}.svg`} alt="Símbolo Pixel"/><p className="eyebrow">Exclusão definitiva</p><h2>{confirmDelete === "bulk" ? `Excluir ${selectedIds.length} criações?` : "Excluir esta criação?"}</h2><p>Essa ação não pode ser desfeita. Arquivos que você já baixou ou exportou não são afetados.</p><div className="modal-actions"><button className="button ghost" onClick={() => setConfirmDelete(null)}>Cancelar</button><button className="button danger" onClick={removeCreations}><Icon name="trash"/> Excluir definitivamente</button></div></section></div> : null;
 
-  const page = screen === "home" ? <Home/> : screen === "creations" ? <Creations/> : screen === "templates" ? <Templates/> : screen === "brands" ? <Brands/> : screen === "settings" ? <Settings/> : screen === "generate" ? <Generation/> : <Result/>;
+  const page = screen === "home" ? <Home/> : screen === "creations" ? <Creations/> : screen === "templates" ? <Templates/> : screen === "brands" ? <Brands/> : screen === "brandbooks" ? <Shell><Brandbooks onNotice={showNotice}/></Shell> : screen === "settings" ? <Settings/> : screen === "generate" ? <Generation/> : <Result/>;
   return <>{page}<Modal/><VariationModal/><DeleteModal/></>;
 }
