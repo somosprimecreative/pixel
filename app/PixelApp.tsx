@@ -1,7 +1,7 @@
 "use client";
 /* eslint-disable @next/next/no-img-element, jsx-a11y/label-has-associated-control, react-hooks/static-components -- Official SVG assets must remain direct files; this is a stateful product shell with local view fragments. */
 
-import { ChangeEvent, ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ChangeEvent, ReactNode, createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { useTheme } from "next-themes";
 import { ArrowLeft, ArrowRight, BookOpen, Check, ChevronDown, CircleHelp, Copy, Download, Grid2X2, House, Image, Layers3, LayoutPanelTop, Menu, Moon, Palette, Pencil, Plus, Settings2, Sparkles, Sun, Trash2, X, type LucideIcon } from "lucide-react";
 import { logoutAction } from "@/app/actions/auth";
@@ -20,7 +20,25 @@ type Notice = { tone: "success" | "error" | "info"; text: string } | null;
 type GoogleDriveState = { loading: boolean; configured: boolean; connected: boolean };
 type DriveUploadState = { phase: string; percent: number } | null;
 
+type ShellContextValue = {
+  member: ActiveAuthMember;
+  theme: "light" | "dark";
+  screen: Screen;
+  retentionLabel: string;
+  mobileNavOpen: boolean;
+  notice: Notice;
+  navigate: (next: Screen) => void;
+  newGeneration: () => void;
+  toggleTheme: () => void;
+  openMobileNav: () => void;
+  closeMobileNav: () => void;
+};
+
 const STORAGE_KEY = "pixel-workspace-v1";
+const navigationItems: { id: Exclude<Screen, "generate" | "result">; label: string; icon: string }[] = [
+  { id: "home", label: "Início", icon: "home" }, { id: "creations", label: "Criações", icon: "grid" }, { id: "templates", label: "Templates", icon: "layers" }, { id: "brands", label: "Marcas", icon: "mark" }, { id: "brandbooks", label: "Brandbooks", icon: "book" }, { id: "settings", label: "Configurações", icon: "gear" },
+];
+const ShellContext = createContext<ShellContextValue | null>(null);
 
 const icons: Record<string, LucideIcon> = { home: House, grid: Grid2X2, layers: Layers3, mark: Palette, book: BookOpen, gear: Settings2, plus: Plus, arrow: ArrowRight, back: ArrowLeft, sun: Sun, moon: Moon, download: Download, spark: Sparkles, trash: Trash2, edit: Pencil, copy: Copy, check: Check, image: Image, close: X, chevron: ChevronDown, menu: Menu, help: CircleHelp, panel: LayoutPanelTop };
 const Icon = ({ name, size = 18 }: { name: string; size?: number }) => {
@@ -50,6 +68,28 @@ function AccountMenu({ member, compact = false }: { member: ActiveAuthMember; co
   const initial = member.name.trim().charAt(0).toUpperCase() || "P";
   if (compact) return <form action={logoutAction}><button className="mobile-logout" type="submit" aria-label="Sair da conta">Sair</button></form>;
   return <details className="account-menu"><summary><span className="account-avatar" aria-hidden="true">{initial}</span><span className="account-summary"><strong>{member.name}</strong><small>{member.workspaceName}</small></span><Icon name="chevron" size={15}/></summary><div className="account-dropdown"><p><strong>{member.name}</strong><span>{member.email}</span></p><span className="account-workspace">Organização: {member.workspaceName}</span><form action={logoutAction}><button className="account-logout" type="submit">Sair</button></form></div></details>;
+}
+
+function Shell({ children }: { children: ReactNode }) {
+  const context = useContext(ShellContext);
+  if (!context) throw new Error("A estrutura de navegação do Pixel não foi inicializada.");
+  const { member, theme, screen, retentionLabel, mobileNavOpen, notice, navigate, newGeneration, toggleTheme, openMobileNav, closeMobileNav } = context;
+  return <main className="app-shell">
+    <aside className="sidebar">
+      <button className="brand-lockup" onClick={() => navigate("home")} aria-label="Ir para início"><img src={`/brand/pixel/signature/lockup-wide-${theme === "dark" ? "light" : "ink"}.svg`} alt="Pixel, um produto Prime Creative" /></button>
+      <button className="generate-nav" onClick={newGeneration}><Icon name="plus"/> Gerar</button>
+      <nav>{navigationItems.map((item) => <button key={item.id} className={screen === item.id ? "nav-active" : ""} onClick={() => navigate(item.id)}><Icon name={item.icon}/><span>{item.label}</span></button>)}</nav>
+      <div className="sidebar-bottom"><p>Criações ficam disponíveis por {retentionLabel}.</p></div>
+    </aside>
+    <section className="main-panel">
+      <header className="desktop-top"><div><strong>Pixel</strong><small>{member.workspaceName}</small></div><div className="desktop-actions"><button className="icon-button" aria-label="Alternar tema" onClick={toggleTheme}><Icon name={theme === "light" ? "moon" : "sun"}/></button><AccountMenu member={member}/></div></header>
+      <header className="mobile-top"><button className="brand-lockup" onClick={() => navigate("home")}><img src={`/brand/pixel/wordmark/wordmark-${theme === "dark" ? "light" : "ink"}.svg`} alt="Pixel" /></button><div className="mobile-actions"><button className="icon-button" aria-label="Abrir navegação" aria-expanded={mobileNavOpen} onClick={openMobileNav}><Icon name="menu"/></button><button className="icon-button" aria-label="Alternar tema" onClick={toggleTheme}><Icon name={theme === "light" ? "moon" : "sun"}/></button><AccountMenu member={member} compact/></div></header>
+      {children}
+    </section>
+    <nav className="mobile-bottom-nav" aria-label="Navegação principal">{navigationItems.map((item) => <button key={item.id} className={screen === item.id ? "active" : ""} onClick={() => navigate(item.id)}><Icon name={item.icon}/><span>{item.label}</span></button>)}</nav>
+    {mobileNavOpen && <div className="mobile-nav-layer"><button className="mobile-nav-scrim" aria-label="Fechar navegação" onClick={closeMobileNav}/><aside className="mobile-nav-sheet" aria-label="Navegação do Pixel"><div className="mobile-nav-head"><img src={`/brand/pixel/wordmark/wordmark-${theme === "dark" ? "light" : "ink"}.svg`} alt="Pixel"/><button className="icon-button" aria-label="Fechar navegação" onClick={closeMobileNav}><Icon name="close"/></button></div><button className="generate-nav" onClick={newGeneration}><Icon name="plus"/> Gerar</button><nav>{navigationItems.map((item) => <button key={item.id} className={screen === item.id ? "nav-active" : ""} onClick={() => navigate(item.id)}><Icon name={item.icon}/><span>{item.label}</span></button>)}</nav><p>Criações ficam disponíveis por {retentionLabel}.</p></aside></div>}
+    {notice && <div className={`toast ${notice.tone}`}><Icon name={notice.tone === "success" ? "check" : "spark"}/>{notice.text}</div>}
+  </main>;
 }
 
 export function PixelApp({ member }: { member: ActiveAuthMember }) {
@@ -316,26 +356,19 @@ export function PixelApp({ member }: { member: ActiveAuthMember }) {
 
   const brandFromForm = (event: React.FormEvent<HTMLFormElement>) => { event.preventDefault(); const values = new FormData(event.currentTarget); const name = String(values.get("name") || "Nova marca"); const brand: BrandProfile = { id: crypto.randomUUID(), name, initials: name.split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase(), colors: [String(values.get("primary") || "#F04B3E"), String(values.get("secondary") || "#A9DCE8")], fonts: String(values.get("fonts") || "Geist"), slogan: String(values.get("slogan") || ""), voice: String(values.get("voice") || ""), guidelines: String(values.get("guidelines") || ""), assets: "Aguardando upload de assets" }; setBrands((items) => [brand, ...items]); setNotice({ tone: "success", text: "Marca cadastrada e pronta para ser usada na geração." }); event.currentTarget.reset(); };
 
-  const navItems: { id: Exclude<Screen, "generate" | "result">; label: string; icon: string }[] = [
-    { id: "home", label: "Início", icon: "home" }, { id: "creations", label: "Criações", icon: "grid" }, { id: "templates", label: "Templates", icon: "layers" }, { id: "brands", label: "Marcas", icon: "mark" }, { id: "brandbooks", label: "Brandbooks", icon: "book" }, { id: "settings", label: "Configurações", icon: "gear" },
-  ];
-
-  const Shell = ({ children }: { children: ReactNode }) => <main className="app-shell">
-    <aside className="sidebar">
-      <button className="brand-lockup" onClick={() => navigate("home")} aria-label="Ir para início"><img src={`/brand/pixel/signature/lockup-wide-${theme === "dark" ? "light" : "ink"}.svg`} alt="Pixel, um produto Prime Creative" /></button>
-      <button className="generate-nav" onClick={newGeneration}><Icon name="plus"/> Gerar</button>
-      <nav>{navItems.map((item) => <button key={item.id} className={screen === item.id ? "nav-active" : ""} onClick={() => navigate(item.id)}><Icon name={item.icon}/><span>{item.label}</span></button>)}</nav>
-      <div className="sidebar-bottom"><p>Criações ficam disponíveis por {retention === "custom" ? `${customDays} dias` : `${retention} dias`}.</p></div>
-    </aside>
-    <section className="main-panel">
-      <header className="desktop-top"><div><strong>Pixel</strong><small>{member.workspaceName}</small></div><div className="desktop-actions"><button className="icon-button" aria-label="Alternar tema" onClick={() => setTheme(theme === "light" ? "dark" : "light")}><Icon name={theme === "light" ? "moon" : "sun"}/></button><AccountMenu member={member}/></div></header>
-      <header className="mobile-top"><button className="brand-lockup" onClick={() => navigate("home")}><img src={`/brand/pixel/wordmark/wordmark-${theme === "dark" ? "light" : "ink"}.svg`} alt="Pixel" /></button><div className="mobile-actions"><button className="icon-button" aria-label="Abrir navegação" aria-expanded={mobileNavOpen} onClick={() => setMobileNavOpen(true)}><Icon name="menu"/></button><button className="icon-button" aria-label="Alternar tema" onClick={() => setTheme(theme === "light" ? "dark" : "light")}><Icon name={theme === "light" ? "moon" : "sun"}/></button><AccountMenu member={member} compact/></div></header>
-      {children}
-    </section>
-    <nav className="mobile-bottom-nav" aria-label="Navegação principal">{navItems.map((item) => <button key={item.id} className={screen === item.id ? "active" : ""} onClick={() => navigate(item.id)}><Icon name={item.icon}/><span>{item.label}</span></button>)}</nav>
-    {mobileNavOpen && <div className="mobile-nav-layer"><button className="mobile-nav-scrim" aria-label="Fechar navegação" onClick={() => setMobileNavOpen(false)}/><aside className="mobile-nav-sheet" aria-label="Navegação do Pixel"><div className="mobile-nav-head"><img src={`/brand/pixel/wordmark/wordmark-${theme === "dark" ? "light" : "ink"}.svg`} alt="Pixel"/><button className="icon-button" aria-label="Fechar navegação" onClick={() => setMobileNavOpen(false)}><Icon name="close"/></button></div><button className="generate-nav" onClick={newGeneration}><Icon name="plus"/> Gerar</button><nav>{navItems.map((item) => <button key={item.id} className={screen === item.id ? "nav-active" : ""} onClick={() => navigate(item.id)}><Icon name={item.icon}/><span>{item.label}</span></button>)}</nav><p>Criações ficam disponíveis por {retention === "custom" ? `${customDays} dias` : `${retention} dias`}.</p></aside></div>}
-    {notice && <div className={`toast ${notice.tone}`}><Icon name={notice.tone === "success" ? "check" : "spark"}/>{notice.text}</div>}
-  </main>;
+  const shellContext: ShellContextValue = {
+    member,
+    theme,
+    screen,
+    retentionLabel: retention === "custom" ? `${customDays} dias` : `${retention} dias`,
+    mobileNavOpen,
+    notice,
+    navigate,
+    newGeneration: () => newGeneration(),
+    toggleTheme: () => setTheme(theme === "light" ? "dark" : "light"),
+    openMobileNav: () => setMobileNavOpen(true),
+    closeMobileNav: () => setMobileNavOpen(false),
+  };
 
   const SectionHead = ({ eyebrow, title, action }: { eyebrow?: string; title: string; action?: ReactNode }) => <header className="section-head"><div>{eyebrow && <p className="eyebrow">{eyebrow}</p>}<h1>{title}</h1></div>{action}</header>;
 
@@ -388,5 +421,5 @@ export function PixelApp({ member }: { member: ActiveAuthMember }) {
   const DeleteModal = () => confirmDelete ? <div className="modal-backdrop"><section className="modal confirm-modal"><img src={`/brand/pixel/symbol/symbol-${theme === "dark" ? "light" : "ink"}.svg`} alt="Símbolo Pixel"/><p className="eyebrow">Exclusão definitiva</p><h2>{confirmDelete === "bulk" ? `Excluir ${selectedIds.length} criações?` : "Excluir esta criação?"}</h2><p>Essa ação não pode ser desfeita. Arquivos que você já baixou ou exportou não são afetados.</p><div className="modal-actions"><button className="button ghost" onClick={() => setConfirmDelete(null)}>Cancelar</button><button className="button danger" onClick={removeCreations}><Icon name="trash"/> Excluir definitivamente</button></div></section></div> : null;
 
   const page = screen === "home" ? <Home/> : screen === "creations" ? <Creations/> : screen === "templates" ? <Templates/> : screen === "brands" ? <Brands/> : screen === "brandbooks" ? <Shell><Brandbooks onNotice={showNotice}/></Shell> : screen === "settings" ? <Settings/> : screen === "generate" ? <Generation/> : <Result/>;
-  return <>{page}<Modal/><VariationModal/><DeleteModal/></>;
+  return <ShellContext.Provider value={shellContext}>{page}<Modal/><VariationModal/><DeleteModal/></ShellContext.Provider>;
 }

@@ -1,8 +1,9 @@
 "use client";
 
-import { ChangeEvent, useEffect, useMemo, useState } from "react";
+import { ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, ArrowRight, BookOpen, Check, ChevronDown, CircleAlert, Copy, Download, FileText, ImagePlus, Layers3, Palette, Plus, Sparkles, Trash2, Upload, X } from "lucide-react";
 import { BrandbookAsset, BrandbookColor, BrandbookDraft, BrandbookGraphic, BrandbookKind, BrandbookSection, BrandbookSectionType, brandbookLabel, brandbookThemes, createBrandbookDraft, defaultSectionTypes, sectionDefaults } from "./brandbook-data";
+import { loadBrandbooks, saveBrandbooks } from "./creation-storage";
 import styles from "./Brandbooks.module.css";
 
 type Notice = { tone: "success" | "error" | "info"; text: string };
@@ -31,21 +32,40 @@ export function Brandbooks({ onNotice }: { onNotice: (notice: Notice) => void })
   const [view, setView] = useState<View>("library");
   const [documents, setDocuments] = useState<BrandbookDraft[]>([]);
   const [draft, setDraft] = useState<BrandbookDraft | null>(null);
+  const [storageReady, setStorageReady] = useState(false);
   const [step, setStep] = useState(1);
   const [generating, setGenerating] = useState(false);
   const [activeSectionId, setActiveSectionId] = useState<string | null>(null);
+  const saveQueue = useRef(Promise.resolve());
 
   useEffect(() => {
-    try {
-      const stored = window.localStorage.getItem(STORAGE_KEY);
-      if (stored) setDocuments(JSON.parse(stored) as BrandbookDraft[]);
-    } catch { onNotice({ tone: "info", text: "Os brandbooks deste navegador não puderam ser restaurados." }); }
+    let active = true;
+    void loadBrandbooks().then((stored) => {
+      if (!active) return;
+      if (stored.length) {
+        setDocuments(stored);
+        return;
+      }
+      try {
+        const legacy = window.localStorage.getItem(STORAGE_KEY);
+        if (legacy) setDocuments(JSON.parse(legacy) as BrandbookDraft[]);
+      } catch {
+        onNotice({ tone: "info", text: "Os brandbooks antigos deste navegador não puderam ser restaurados." });
+      }
+    }).catch(() => {
+      if (active) onNotice({ tone: "error", text: "O armazenamento local de brandbooks não está disponível neste navegador." });
+    }).finally(() => {
+      if (active) setStorageReady(true);
+    });
+    return () => { active = false; };
   }, [onNotice]);
 
   useEffect(() => {
-    try { window.localStorage.setItem(STORAGE_KEY, JSON.stringify(documents)); }
-    catch { onNotice({ tone: "error", text: "Não foi possível salvar este brandbook neste navegador." }); }
-  }, [documents, onNotice]);
+    if (!storageReady) return;
+    saveQueue.current = saveQueue.current.catch(() => undefined).then(() => saveBrandbooks(documents)).catch(() => {
+      onNotice({ tone: "error", text: "Não foi possível salvar os rascunhos de brandbook neste navegador." });
+    });
+  }, [documents, onNotice, storageReady]);
 
   const activeSection = draft?.sections.find((section) => section.id === activeSectionId) ?? draft?.sections[0] ?? null;
   const activeTheme = draft ? brandbookThemes.find((theme) => theme.id === draft.theme) ?? brandbookThemes[0] : null;
@@ -64,6 +84,15 @@ export function Brandbooks({ onNotice }: { onNotice: (notice: Notice) => void })
     setDraft(next);
     if (message) onNotice({ tone: "success", text: message });
   };
+
+  useEffect(() => {
+    if (!storageReady || !draft) return;
+    setDocuments((items) => {
+      const existing = items.find((item) => item.id === draft.id);
+      if (existing === draft) return items;
+      return existing ? items.map((item) => item.id === draft.id ? draft : item) : [draft, ...items];
+    });
+  }, [draft, storageReady]);
 
   const handleAsset = async (event: ChangeEvent<HTMLInputElement>, kind: "primary" | "alternate" | "graphic", id?: string) => {
     const file = event.target.files?.[0];
@@ -116,6 +145,8 @@ export function Brandbooks({ onNotice }: { onNotice: (notice: Notice) => void })
   const draftTitle = draft?.name || "Nova identidade";
   const completed = [Boolean(draft?.name), Boolean(draft?.primaryLogo?.source), Boolean(draft?.colors.length), Boolean(draft?.theme), Boolean(draft?.sections.length), Boolean(draft?.status === "ready")];
 
+  if (!storageReady) return <section className={styles.page}><div className={styles.empty}><FileText size={22}/><p>Restaurando seus rascunhos locais…</p></div></section>;
+
   if (view === "library") return <section className={styles.page}>
     <header className={styles.head}><div><p className="eyebrow">Identidade visual</p><h1>Brandbooks</h1><p>Construa um manual vivo ou uma apresentação curta a partir da mesma base de marca.</p></div></header>
     <div className={styles.startGrid}>
@@ -143,10 +174,10 @@ export function Brandbooks({ onNotice }: { onNotice: (notice: Notice) => void })
   </section>;
 
   return <section className={styles.page}>
-    <header className={styles.editorHead}><button className="button ghost" onClick={closeDraft}><ArrowLeft size={16}/> Brandbooks</button><span className={styles.breadcrumb}>{draftTitle} <i/> {brandbookLabel(draft.kind)}</span><div><span className={styles.saved}><Check size={14}/> Salvo localmente</span><button className="button ghost" onClick={downloadJson}><Download size={16}/> Baixar dados</button></div></header>
+    <header className={styles.editorHead}><button className="button ghost" onClick={closeDraft}><ArrowLeft size={16}/> Brandbooks</button><span className={styles.breadcrumb}>{draftTitle} <i/> {brandbookLabel(draft.kind)}</span><div><span className={styles.saved}><Check size={14}/> Salvo neste dispositivo</span><button className="button ghost" onClick={downloadJson}><Download size={16}/> Baixar dados</button></div></header>
     <div className={styles.editorLayout}><aside className={styles.outline}><p>Índice</p>{draft.sections.map((section) => <button className={activeSection?.id === section.id ? styles.activeSection : ""} onClick={() => setActiveSectionId(section.id)} key={section.id}>{section.title}</button>)}<button className={styles.outlineAdd} onClick={() => updateDraft((current) => ({ ...current, sections: [...current.sections, sectionDefaults("overview")] }))}><Plus size={15}/> Seção</button></aside>
       <main className={`${styles.preview} ${styles[draft.theme]}`}>{activeSection && <SectionPreview section={activeSection} draft={draft}/>}</main>
-      <aside className={styles.properties}><div className={styles.propertyHead}><p>Propriedades</p><span>{activeSection?.layoutKey}</span></div>{activeSection && <><label>Título<input value={activeSection.title} onChange={(event) => updateDraft((current) => ({ ...current, sections: current.sections.map((section) => section.id === activeSection.id ? { ...section, title: event.target.value } : section) }))}/></label><label>Texto<textarea value={activeSection.summary} onChange={(event) => updateDraft((current) => ({ ...current, sections: current.sections.map((section) => section.id === activeSection.id ? { ...section, summary: event.target.value } : section) }))}/></label><label className={styles.checkRow}><input type="checkbox" checked={activeSection.visible} onChange={(event) => updateDraft((current) => ({ ...current, sections: current.sections.map((section) => section.id === activeSection.id ? { ...section, visible: event.target.checked } : section) }))}/><span>Exibir seção</span></label><button className="button ghost" onClick={() => updateDraft((current) => ({ ...current, sections: current.sections.filter((section) => section.id !== activeSection.id) }))}><Trash2 size={16}/> Excluir seção</button></>}<hr/><label>Tema<select value={draft.theme} onChange={(event) => updateDraft((current) => ({ ...current, theme: event.target.value as BrandbookDraft["theme"], variant: brandbookThemes.find((theme) => theme.id === event.target.value)?.variants[0] ?? current.variant }))}>{brandbookThemes.map((theme) => <option value={theme.id} key={theme.id}>{theme.name}</option>)}</select></label><p className={styles.editorNote}>A fundação de Storage e jobs está pronta para aplicação manual no Supabase central. Publicação por link e PDF entram quando o worker de renderização for definido.</p></aside>
+      <aside className={styles.properties}><div className={styles.propertyHead}><p>Propriedades</p><span>{activeSection?.layoutKey}</span></div>{activeSection && <><label>Título<input value={activeSection.title} onChange={(event) => updateDraft((current) => ({ ...current, sections: current.sections.map((section) => section.id === activeSection.id ? { ...section, title: event.target.value } : section) }))}/></label><label>Texto<textarea value={activeSection.summary} onChange={(event) => updateDraft((current) => ({ ...current, sections: current.sections.map((section) => section.id === activeSection.id ? { ...section, summary: event.target.value } : section) }))}/></label><label className={styles.checkRow}><input type="checkbox" checked={activeSection.visible} onChange={(event) => updateDraft((current) => ({ ...current, sections: current.sections.map((section) => section.id === activeSection.id ? { ...section, visible: event.target.checked } : section) }))}/><span>Exibir seção</span></label><button className="button ghost" onClick={() => updateDraft((current) => ({ ...current, sections: current.sections.filter((section) => section.id !== activeSection.id) }))}><Trash2 size={16}/> Excluir seção</button></>}<hr/><label>Tema<select value={draft.theme} onChange={(event) => updateDraft((current) => ({ ...current, theme: event.target.value as BrandbookDraft["theme"], variant: brandbookThemes.find((theme) => theme.id === event.target.value)?.variants[0] ?? current.variant }))}>{brandbookThemes.map((theme) => <option value={theme.id} key={theme.id}>{theme.name}</option>)}</select></label><p className={styles.editorNote}>Este rascunho fica salvo neste dispositivo. A sincronização com o workspace e a publicação por link entram na próxima etapa.</p></aside>
     </div>
   </section>;
 }

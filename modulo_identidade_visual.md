@@ -4,7 +4,7 @@
 
 Este documento concentra a especificação do módulo de Identidade Visual do **Pixel by Prime Creative**. Ele traduz a extração oficial `PIXEL-BRANDBOOK-AI-EXTRACTION.md` em um contrato de produto e implementação. Para identidade da interface e assets oficiais do Pixel, prevalece também [docs/pixel-brand-product-system.md](./docs/pixel-brand-product-system.md).
 
-**Estado em 25 de outubro de 2026:** a experiência de Brandbooks está implementada localmente no Pixel; a fundação Supabase foi aplicada ao projeto central **OrbitaByPrime**. A integração de CRUD, upload privado e autosave compartilhado ainda é a próxima etapa de aplicação.
+**Estado em 25 de outubro de 2026:** a experiência de Brandbooks está implementada no Pixel e mantém rascunhos e uploads neste dispositivo via IndexedDB; a fundação Supabase foi aplicada ao projeto central **OrbitaByPrime**. A integração de CRUD, upload privado e autosave compartilhado ainda é a próxima etapa de aplicação.
 
 ## Objetivo do produto
 
@@ -82,7 +82,7 @@ Cada capítulo tem `section_type`, título, resumo, `layout_key`, posição, vis
 - Validação de arquivo e tamanho no navegador.
 - Geração assistida autenticada via rota `/api/brandbook/generate`.
 
-Enquanto a migration não for aplicada, os rascunhos e uploads permanecem no armazenamento local do navegador. Isso é intencional: não há simulação de persistência compartilhada.
+Enquanto o CRUD compartilhado não for integrado, os rascunhos e uploads permanecem no IndexedDB deste navegador. Isso é intencional: não há simulação de persistência compartilhada.
 
 ## Fundação Supabase preparada
 
